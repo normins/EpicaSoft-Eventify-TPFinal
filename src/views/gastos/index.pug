@@ -1,0 +1,322 @@
+extends ../layout.pug
+
+block content
+
+    nav.navbar.navbar-expand-lg.navbar-dark.bg-black.shadow
+      .container-fluid
+        a.navbar-brand(href="/panel") Eventify Pro
+        if user
+          span.navbar-text.ms-auto #{user.name || user.email}
+
+    .container.py-5
+      h1.mb-4 Gastos
+      p.text-light-50.mb-4 Acá podés ver y crear gastos.
+      // Los datos se guardan en Mongo usando /api/gastos.
+
+      // FORMULARIO NUEVO GASTO
+      .card.bg-secondary.border-0.shadow.mb-4
+        .card-body
+          h5.card-title.mb-3 Nuevo gasto
+          form#form-gasto
+            .row.g-3
+              .col-md-3
+                label.form-label Concepto
+                input.form-control(type="text" name="concepto" required placeholder="Ej: decoración")
+              .col-md-2
+                label.form-label Monto
+                input.form-control(type="number" name="monto" min="0" step="1" required placeholder="0")
+              .col-md-3
+                label.form-label Evento
+                select.form-select(name="evento" id="select-evento-gasto" required)
+                  option(value="") Seleccioná un evento
+              .col-md-4
+                label.form-label Proveedor (opcional)
+                select.form-select(name="proveedor" id="select-proveedor-gasto")
+                  option(value="") Sin proveedor
+            button.btn.btn-light.mt-3(type="submit") Guardar gasto
+
+      // TABLA
+      .card.bg-secondary.border-0.shadow
+        .card-body
+          h5.card-title.mb-3 Lista de gastos
+          table.table.table-dark.table-striped.mb-0
+            thead
+              tr
+                th Concepto
+                th Monto
+                th Evento
+                th Proveedor
+            tbody#tabla-gastos
+              tr
+                td(colspan="4") Cargando gastos...
+
+      .mt-4
+        a.btn.btn-outline-light(href="/panel") Volver al panel
+
+      // PANEL DE DETALLE
+      .card.bg-secondary.border-0.shadow.mt-4
+        .card-body
+          h5.card-title.mb-3 Detalle del gasto
+          p.text-light-50#detalle-msg Seleccioná un gasto de la tabla para ver sus datos.
+
+          form#form-detalle-gasto(class="d-none")
+            input(type="hidden" name="id")
+            .row.g-3
+              .col-md-3
+                label.form-label Concepto
+                input.form-control(type="text" name="concepto")
+              .col-md-2
+                label.form-label Monto
+                input.form-control(type="number" name="monto" min="0" step="1")
+              .col-md-3
+                label.form-label Evento
+                select.form-select(name="evento" id="detalle-evento-gasto")
+                  option(value="") Seleccioná un evento
+              .col-md-4
+                label.form-label Proveedor
+                select.form-select(name="proveedor" id="detalle-proveedor-gasto")
+                  option(value="") Sin proveedor
+            .mt-3.d-flex.gap-2
+              button.btn.btn-light(type="submit") Guardar cambios
+              button.btn.btn-outline-danger#btn-borrar-gasto(type="button") Eliminar gasto
+
+    script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js")
+    script.
+      let mapaEventosGasto = {};
+      let mapaProveedoresGasto = {};
+
+      async function cargarMapasEventosYProveedores() {
+        try {
+          // eventos
+          const resEv = await fetch('/api/eventos');
+          if (resEv.ok) {
+            const eventos = await resEv.json();
+            mapaEventosGasto = {};
+            eventos.forEach(e => {
+              mapaEventosGasto[e._id] = e.nombre || e.titulo || e._id;
+            });
+
+            const selectsEvento = [
+              document.getElementById('select-evento-gasto'),
+              document.getElementById('detalle-evento-gasto')
+            ];
+
+            selectsEvento.forEach(sel => {
+              if (!sel) return;
+              sel.innerHTML = '<option value="">Seleccioná un evento</option>';
+              eventos.forEach(e => {
+                const opt = document.createElement('option');
+                opt.value = e._id;
+                opt.textContent = e.nombre || e.titulo || e._id;
+                sel.appendChild(opt);
+              });
+            });
+          }
+
+          // proveedores
+          const resProv = await fetch('/api/proveedores');
+          if (resProv.ok) {
+            const proveedores = await resProv.json();
+            mapaProveedoresGasto = {};
+            proveedores.forEach(p => {
+              mapaProveedoresGasto[p._id] = p.nombre || p._id;
+            });
+
+            const selectsProv = [
+              document.getElementById('select-proveedor-gasto'),
+              document.getElementById('detalle-proveedor-gasto')
+            ];
+
+            selectsProv.forEach(sel => {
+              if (!sel) return;
+              sel.innerHTML = '<option value="">Sin proveedor</option>';
+              proveedores.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p._id;
+                opt.textContent = p.nombre || p._id;
+                sel.appendChild(opt);
+              });
+            });
+          }
+        } catch (err) {
+          console.error("Error al cargar eventos/proveedores para gastos:", err);
+        }
+      }
+
+      async function cargarGastos() {
+        const tbody = document.getElementById('tabla-gastos');
+        tbody.innerHTML = '<tr><td colspan="4">Cargando gastos...</td></tr>';
+
+        try {
+          await cargarMapasEventosYProveedores();
+
+          const res = await fetch('/api/gastos');
+          if (!res.ok) {
+            tbody.innerHTML = '<tr><td colspan="4">Error al cargar gastos</td></tr>';
+            return;
+          }
+
+          const gastos = await res.json();
+          if (!gastos.length) {
+            tbody.innerHTML = '<tr><td colspan="4">No hay gastos cargados.</td></tr>';
+            return;
+          }
+
+          tbody.innerHTML = '';
+          gastos.forEach(g => {
+            const tr = document.createElement('tr');
+            tr.style.cursor = 'pointer';
+            tr.dataset.id = g._id;
+
+            const nombreEvento = g.evento ? (mapaEventosGasto[g.evento] || g.evento) : '';
+            const nombreProveedor = g.proveedor ? (mapaProveedoresGasto[g.proveedor] || g.proveedor) : '';
+
+            tr.innerHTML = `
+              <td>${g.concepto || ''}</td>
+              <td>${g.monto ?? 0}</td>
+              <td>${nombreEvento}</td>
+              <td>${nombreProveedor}</td>
+            `;
+
+            tr.addEventListener('click', () => seleccionarGasto(g._id));
+            tbody.appendChild(tr);
+          });
+        } catch (err) {
+          console.error(err);
+          tbody.innerHTML = '<tr><td colspan="4">Error al cargar gastos.</td></tr>';
+        }
+      }
+
+      async function crearGasto(e) {
+        e.preventDefault();
+        const form = e.target;
+        const data = {
+          concepto: form.concepto.value,
+          monto: form.monto.value,
+          evento: form.evento.value,
+          proveedor: form.proveedor.value || ''
+        };
+
+        try {
+          const res = await fetch('/api/gastos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+          });
+
+          if (!res.ok) {
+            alert('Error al guardar el gasto');
+            return;
+          }
+
+          form.reset();
+          cargarGastos();
+        } catch (err) {
+          console.error(err);
+          alert('Error inesperado al guardar el gasto');
+        }
+      }
+
+      async function seleccionarGasto(id) {
+        const msg = document.getElementById('detalle-msg');
+        const formDetalle = document.getElementById('form-detalle-gasto');
+        const elems = formDetalle.elements;
+
+        try {
+          const res = await fetch(`/api/gastos/${id}`);
+          if (!res.ok) {
+            msg.textContent = 'No se pudo cargar el detalle del gasto.';
+            formDetalle.classList.add('d-none');
+            return;
+          }
+
+          const g = await res.json();
+
+          msg.textContent = 'Podés editar los datos del gasto o eliminarlo.';
+          formDetalle.classList.remove('d-none');
+
+          elems.id.value = g._id;
+          elems.concepto.value = g.concepto || '';
+          elems.monto.value = g.monto ?? 0;
+          elems.evento.value = g.evento || '';
+          elems.proveedor.value = g.proveedor || '';
+        } catch (err) {
+          console.error(err);
+          msg.textContent = 'Error al cargar el detalle del gasto.';
+          formDetalle.classList.add('d-none');
+        }
+      }
+
+      async function guardarCambiosGasto(e) {
+        e.preventDefault();
+        const form = e.target;
+        const elems = form.elements;
+        const id = elems.id.value;
+
+        const data = {
+          concepto: elems.concepto.value,
+          monto: elems.monto.value,
+          evento: elems.evento.value,
+          proveedor: elems.proveedor.value || ''
+        };
+
+        try {
+          const res = await fetch(`/api/gastos/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+          });
+
+          if (!res.ok) {
+            alert('Error al actualizar el gasto');
+            return;
+          }
+
+          alert('Gasto actualizado correctamente');
+          cargarGastos();
+        } catch (err) {
+          console.error(err);
+          alert('Error inesperado al actualizar el gasto');
+        }
+      }
+
+      async function borrarGasto() {
+        const form = document.getElementById('form-detalle-gasto');
+        const elems = form.elements;
+        const id = elems.id.value;
+        if (!id) return;
+
+        if (!confirm('¿Seguro que querés eliminar este gasto?')) return;
+
+        try {
+          const res = await fetch(`/api/gastos/${id}`, {
+            method: 'DELETE'
+          });
+
+          if (!res.ok) {
+            alert('Error al eliminar el gasto');
+            return;
+          }
+
+          alert('Gasto eliminado');
+          form.classList.add('d-none');
+          document.getElementById('detalle-msg').textContent = 'Seleccioná un gasto de la tabla para ver sus datos.';
+          cargarGastos();
+        } catch (err) {
+          console.error(err);
+          alert('Error inesperado al eliminar el gasto');
+        }
+      }
+
+      document.addEventListener('DOMContentLoaded', () => {
+        const formNuevo = document.getElementById('form-gasto');
+        formNuevo.addEventListener('submit', crearGasto);
+
+        const formDetalle = document.getElementById('form-detalle-gasto');
+        formDetalle.addEventListener('submit', guardarCambiosGasto);
+
+        const btnBorrar = document.getElementById('btn-borrar-gasto');
+        btnBorrar.addEventListener('click', borrarGasto);
+
+        cargarGastos();
+      });

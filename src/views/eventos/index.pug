@@ -1,0 +1,543 @@
+extends ../layout.pug
+
+block content
+
+    nav.navbar.navbar-expand-lg.navbar-dark.bg-black.shadow
+      .container-fluid
+        a.navbar-brand(href="/panel") Eventify Pro
+        if user
+          span.navbar-text.ms-auto #{user.name || user.email}
+
+    .container.py-5
+      h1.mb-4 Eventos
+      p.text-light-50.mb-4 Acá podés ver y crear eventos. Los datos se guardan en Mongo usando la API /api/eventos.
+
+      // FORMULARIO NUEVO EVENTO
+      .card.bg-secondary.border-0.shadow.mb-4
+        .card-body
+          h5.card-title.mb-3 Nuevo evento
+          form#form-evento
+            .row.g-3
+              .col-md-4
+                label.form-label Nombre
+                input.form-control(type="text" name="nombre" required placeholder="Ej: Cumpleaños")
+              .col-md-4
+                label.form-label Fecha
+                input.form-control(type="date" name="fecha" required)
+              .col-md-4
+                label.form-label Lugar
+                input.form-control(type="text" name="lugar" placeholder="Salón, casa, etc.")
+            .row.g-3.mt-2
+              .col-md-4
+                label.form-label Presupuesto
+                input.form-control(type="number" name="presupuesto" min="0" step="1" placeholder="0")
+            button.btn.btn-light.mt-3(type="submit") Guardar evento
+
+      // TABLA DE EVENTOS
+      .card.bg-secondary.border-0.shadow
+        .card-body
+          h5.card-title.mb-3 Lista de eventos
+          table.table.table-dark.table-striped.mb-0
+            thead
+              tr
+                th Nombre
+                th Fecha
+                th Lugar
+                th Presupuesto
+            tbody#tabla-eventos
+              tr
+                td(colspan="4") Cargando eventos...
+
+      .mt-4
+        a.btn.btn-outline-light(href="/panel") Volver al panel
+
+      // DETALLE DEL EVENTO
+      .card.bg-secondary.border-0.shadow.mt-4
+        .card-body
+          h5.card-title.mb-3 Detalle del evento
+          p.text-light-50#detalle-msg Seleccioná un evento de la tabla para ver sus datos.
+
+          form#form-detalle(class="d-none")
+            input(type="hidden" name="id")
+            .row.g-3
+              .col-md-4
+                label.form-label Nombre
+                input.form-control(type="text" name="nombre")
+              .col-md-4
+                label.form-label Fecha
+                input.form-control(type="date" name="fecha")
+              .col-md-4
+                label.form-label Lugar
+                input.form-control(type="text" name="lugar")
+            .row.g-3.mt-2
+              .col-md-4
+                label.form-label Presupuesto
+                input.form-control(type="number" name="presupuesto" min="0" step="1")
+            .mt-3.d-flex.gap-2
+              button.btn.btn-light(type="submit") Guardar cambios
+              button.btn.btn-danger.ms-auto#btn-borrar(type="button") Eliminar evento
+
+      // INVITADOS DEL EVENTO
+      .card.bg-secondary.border-0.shadow.mt-4
+        .card-body
+          h5.card-title.mb-3 Invitados de este evento
+          table.table.table-dark.table-striped.mb-0
+            thead
+              tr
+                th Nombre
+                th Email
+                th Estado
+            tbody#tabla-invitados-evento
+              tr
+                td(colspan="3") Seleccioná un evento para ver sus invitados.
+
+      // PROVEEDORES DEL EVENTO
+      .card.bg-secondary.border-0.shadow.mt-4
+        .card-body
+          h5.card-title.mb-3 Proveedores de este evento
+          table.table.table-dark.table-striped.mb-0
+            thead
+              tr
+                th Nombre
+                th Rubro
+                th Teléfono
+            tbody#tabla-proveedores-evento
+              tr
+                td(colspan="3") Seleccioná un evento para ver sus proveedores.
+
+      // GASTOS DEL EVENTO
+      .card.bg-secondary.border-0.shadow.mt-4
+        .card-body
+          h5.card-title.mb-3 Gastos de este evento
+          table.table.table-dark.table-striped.mb-0
+            thead
+              tr
+                th Concepto
+                th Proveedor
+                th Monto
+            tbody#tabla-gastos-evento
+              tr
+                td(colspan="3") Seleccioná un evento para ver sus gastos.
+          .mt-3
+            p.mb-1
+              | Total por proveedores: 
+              span#total-proveedores 0
+            p.mb-1
+              | Total por gastos: 
+              span#total-gastos 0
+            p.mb-1
+              | Total gastado: 
+              span#total-gastado 0
+            p.mb-0
+              | Presupuesto disponible: 
+              span#presupuesto-restante 0
+
+    script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js")
+    script.
+      // ==============================
+      // VARIABLES GLOBALES
+      // ==============================
+      let restante = 0;
+      let mapaProveedoresEvento = {};
+      let totalProveedoresEvento = 0;
+      let totalGastosEvento = 0;
+
+      function formatearFecha(iso) {
+        if (!iso) return "";
+        try { return iso.slice(0, 10); }
+        catch { return iso; }
+      }
+
+      // ==============================
+      // CARGAR LISTA DE EVENTOS
+      // ==============================
+      async function cargarEventos() {
+        const tbody = document.getElementById("tabla-eventos");
+        tbody.innerHTML = '<tr><td colspan="4">Cargando eventos...</td></tr>';
+
+        try {
+          const res = await fetch("/api/eventos");
+          if (!res.ok) {
+            tbody.innerHTML = '<tr><td colspan="4">Error al cargar eventos</td></tr>';
+            return;
+          }
+
+          const eventos = await res.json();
+          if (!eventos.length) {
+            tbody.innerHTML = '<tr><td colspan="4">No hay eventos cargados.</td></tr>';
+            return;
+          }
+
+          tbody.innerHTML = "";
+          eventos.forEach(e => {
+            const tr = document.createElement("tr");
+            tr.style.cursor = "pointer";
+            tr.dataset.id = e._id;
+
+            tr.innerHTML = `
+              <td>${e.nombre || ""}</td>
+              <td>${formatearFecha(e.fecha)}</td>
+              <td>${e.lugar || ""}</td>
+              <td>${e.presupuesto ?? ""}</td>
+            `;
+
+            tr.addEventListener("click", () => seleccionarEvento(e._id));
+            tbody.appendChild(tr);
+          });
+
+        } catch (err) {
+          console.error(err);
+          tbody.innerHTML = '<tr><td colspan="4">Error al cargar eventos.</td></tr>';
+        }
+      }
+
+      // ==============================
+      // CREAR EVENTO
+      // ==============================
+      async function crearEvento(e) {
+        e.preventDefault();
+        const form = e.target;
+        const data = {
+          nombre: form.nombre.value,
+          fecha: form.fecha.value,
+          lugar: form.lugar.value,
+          presupuesto: Number(form.presupuesto.value || 0)
+        };
+
+        try {
+          const res = await fetch("/api/eventos", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(data)
+          });
+
+          if (!res.ok) {
+            alert("Error al guardar el evento");
+            return;
+          }
+
+          form.reset();
+          cargarEventos();
+        } catch (err) {
+          console.error(err);
+          alert("Error inesperado al guardar el evento");
+        }
+      }
+
+      // ==============================
+      // SELECCIONAR EVENTO
+      // ==============================
+      async function seleccionarEvento(id) {
+        const msg = document.getElementById("detalle-msg");
+        const formDetalle = document.getElementById("form-detalle");
+        const elems = formDetalle.elements;
+
+        try {
+          const res = await fetch(`/api/eventos/${id}`);
+          if (!res.ok) {
+            msg.textContent = "No se pudo cargar el detalle del evento.";
+            formDetalle.classList.add("d-none");
+            return;
+          }
+
+          const e = await res.json();
+
+          msg.textContent = "Podés editar los datos del evento o eliminarlo.";
+          formDetalle.classList.remove("d-none");
+
+          elems.id.value = e._id;
+          elems.nombre.value = e.nombre || "";
+          elems.fecha.value = e.fecha ? formatearFecha(e.fecha) : "";
+          elems.lugar.value = e.lugar || "";
+          elems.presupuesto.value = e.presupuesto ?? "";
+
+          // cargar invitados, proveedores y gastos del evento
+          await cargarInvitadosDeEvento(id);
+          await cargarProveedoresDeEvento(id);
+          await cargarGastosDeEvento(id);
+
+        } catch (err) {
+          console.error(err);
+          msg.textContent = "Error al cargar el detalle del evento.";
+          formDetalle.classList.add("d-none");
+        }
+      }
+
+      // ==============================
+      // CARGAR INVITADOS DEL EVENTO
+      // ==============================
+      async function cargarInvitadosDeEvento(eventoId) {
+        const tbody = document.getElementById("tabla-invitados-evento");
+        tbody.innerHTML = '<tr><td colspan="3">Cargando invitados...</td></tr>';
+
+        try {
+          const res = await fetch(`/api/invitados?evento=${eventoId}`);
+          if (!res.ok) {
+            tbody.innerHTML = '<tr><td colspan="3">Error al cargar invitados.</td></tr>';
+            return;
+          }
+
+          const invitados = await res.json();
+
+          if (!invitados.length) {
+            tbody.innerHTML = '<tr><td colspan="3">Este evento todavía no tiene invitados.</td></tr>';
+            return;
+          }
+
+          tbody.innerHTML = "";
+          invitados.forEach(i => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+              <td>${i.nombre || ""}</td>
+              <td>${i.email || ""}</td>
+              <td>${i.estado || "pendiente"}</td>
+            `;
+            tbody.appendChild(tr);
+          });
+        } catch (err) {
+          console.error(err);
+          tbody.innerHTML = '<tr><td colspan="3">Error al cargar invitados.</td></tr>';
+        }
+      }
+
+      // ==============================
+      // CARGAR PROVEEDORES DEL EVENTO
+      // ==============================
+      async function cargarProveedoresDeEvento(eventoId) {
+        const tbody = document.getElementById("tabla-proveedores-evento");
+        tbody.innerHTML = '<tr><td colspan="3">Cargando proveedores...</td></tr>';
+
+        try {
+          const res = await fetch(`/api/proveedores?evento=${eventoId}`);
+          if (!res.ok) {
+            tbody.innerHTML = '<tr><td colspan="3">Error al cargar proveedores.</td></tr>';
+            totalProveedoresEvento = 0;
+            document.getElementById("total-proveedores").textContent = 0;
+            actualizarPresupuestoDisponible();
+            return;
+          }
+
+          const proveedores = await res.json();
+
+          mapaProveedoresEvento = {};
+          totalProveedoresEvento = 0;
+
+          if (!proveedores.length) {
+            tbody.innerHTML = '<tr><td colspan="3">Este evento todavía no tiene proveedores.</td></tr>';
+            document.getElementById("total-proveedores").textContent = 0;
+            actualizarPresupuestoDisponible();
+            return;
+          }
+
+          tbody.innerHTML = "";
+          proveedores.forEach(p => {
+            mapaProveedoresEvento[p._id] = p.nombre || p._id;
+
+            const costoNum = Number(p.costo || 0);
+            totalProveedoresEvento += costoNum;
+
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+              <td>${p.nombre || ""}</td>
+              <td>${p.rubro || ""}</td>
+              <td>${p.telefono || ""}</td>
+            `;
+            tbody.appendChild(tr);
+          });
+
+          document.getElementById("total-proveedores").textContent = totalProveedoresEvento;
+          actualizarPresupuestoDisponible();
+        } catch (err) {
+          console.error(err);
+          tbody.innerHTML = '<tr><td colspan="3">Error al cargar proveedores.</td></tr>';
+          totalProveedoresEvento = 0;
+          document.getElementById("total-proveedores").textContent = 0;
+          actualizarPresupuestoDisponible();
+        }
+      }
+
+      // ==============================
+      // CARGAR GASTOS DEL EVENTO
+      // ==============================
+      async function cargarGastosDeEvento(eventoId) {
+        const tbody = document.getElementById("tabla-gastos-evento");
+        tbody.innerHTML = '<tr><td colspan="3">Cargando gastos...</td></tr>';
+
+        try {
+          const res = await fetch(`/api/gastos?evento=${eventoId}`);
+          if (!res.ok) {
+            tbody.innerHTML = '<tr><td colspan="3">Error al cargar gastos.</td></tr>';
+            totalGastosEvento = 0;
+            document.getElementById("total-gastos").textContent = 0;
+            actualizarPresupuestoDisponible();
+            return;
+          }
+
+          const gastos = await res.json();
+          totalGastosEvento = 0;
+
+          if (!gastos.length) {
+            tbody.innerHTML = '<tr><td colspan="3">Este evento todavía no tiene gastos.</td></tr>';
+            totalGastosEvento = 0;
+            document.getElementById("total-gastos").textContent = 0;
+            actualizarPresupuestoDisponible();
+            return;
+          }
+
+          tbody.innerHTML = "";
+          gastos.forEach(g => {
+            const montoNum = Number(g.monto || 0);
+            totalGastosEvento += montoNum;
+
+            const nombreProveedor = g.proveedor
+              ? (mapaProveedoresEvento[g.proveedor] || g.proveedor)
+              : "";
+
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+              <td>${g.concepto || ""}</td>
+              <td>${nombreProveedor}</td>
+              <td>${montoNum}</td>
+            `;
+            tbody.appendChild(tr);
+          });
+
+          document.getElementById("total-gastos").textContent = totalGastosEvento;
+          actualizarPresupuestoDisponible();
+
+        } catch (err) {
+          console.error(err);
+          tbody.innerHTML = '<tr><td colspan="3">Error al cargar gastos.</td></tr>';
+          totalGastosEvento = 0;
+          document.getElementById("total-gastos").textContent = 0;
+          actualizarPresupuestoDisponible();
+        }
+      }
+
+      // ==============================
+      // CALCULAR PRESUPUESTO RESTANTE
+      // ==============================
+      function actualizarPresupuestoDisponible() {
+        const formDetalle = document.getElementById("form-detalle");
+        if (!formDetalle) return;
+
+        const elems = formDetalle.elements;
+        const presupuesto = Number(elems.presupuesto.value || 0);
+
+        const totalProv = Number(totalProveedoresEvento || 0);
+        const totalGast = Number(totalGastosEvento || 0);
+        const total = totalProv + totalGast;
+
+        restante = presupuesto - total;
+
+        document.getElementById("total-proveedores").textContent = totalProv;
+        document.getElementById("total-gastos").textContent = totalGast;
+        document.getElementById("total-gastado").textContent = total;
+        document.getElementById("presupuesto-restante").textContent = restante;
+
+        console.log("Presupuesto:", presupuesto,
+                    "Proveedores:", totalProv,
+                    "Gastos:", totalGast,
+                    "Restante:", restante);
+      }
+
+      // ==============================
+      // GUARDAR CAMBIOS DEL EVENTO
+      // ==============================
+      async function guardarCambiosDetalle(e) {
+        e.preventDefault();
+        const form = e.target;
+        const elems = form.elements;
+        const id = elems.id.value;
+
+        const data = {
+          nombre: elems.nombre.value,
+          fecha: elems.fecha.value,
+          lugar: elems.lugar.value,
+          presupuesto: Number(elems.presupuesto.value || 0)
+        };
+
+        try {
+          const res = await fetch(`/api/eventos/${id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(data)
+          });
+
+          if (!res.ok) {
+            alert("Error al actualizar el evento");
+            return;
+          }
+
+          alert("Evento actualizado correctamente");
+          cargarEventos();
+          // recalc totales para el mismo evento
+          await cargarProveedoresDeEvento(id);
+          await cargarGastosDeEvento(id);
+        } catch (err) {
+          console.error(err);
+          alert("Error inesperado al actualizar el evento");
+        }
+      }
+
+      // ==============================
+      // BORRAR EVENTO
+      // ==============================
+      async function borrarEvento() {
+        const form = document.getElementById("form-detalle");
+        const elems = form.elements;
+        const id = elems.id.value;
+        if (!id) return;
+
+        if (!confirm("¿Seguro que querés eliminar este evento?")) return;
+
+        try {
+          const res = await fetch(`/api/eventos/${id}`, {
+            method: "DELETE"
+          });
+
+          if (!res.ok) {
+            alert("Error al eliminar el evento");
+            return;
+          }
+
+          alert("Evento eliminado");
+          form.classList.add("d-none");
+          document.getElementById("detalle-msg").textContent = "Seleccioná un evento de la tabla para ver sus datos.";
+          document.getElementById("tabla-invitados-evento").innerHTML =
+            '<tr><td colspan="3">Seleccioná un evento para ver sus invitados.</td></tr>';
+          document.getElementById("tabla-proveedores-evento").innerHTML =
+            '<tr><td colspan="3">Seleccioná un evento para ver sus proveedores.</td></tr>';
+          document.getElementById("tabla-gastos-evento").innerHTML =
+            '<tr><td colspan="3">Seleccioná un evento para ver sus gastos.</td></tr>';
+
+          totalProveedoresEvento = 0;
+          totalGastosEvento = 0;
+          restante = 0;
+          document.getElementById("total-proveedores").textContent = 0;
+          document.getElementById("total-gastos").textContent = 0;
+          document.getElementById("total-gastado").textContent = 0;
+          document.getElementById("presupuesto-restante").textContent = 0;
+
+          cargarEventos();
+        } catch (err) {
+          console.error(err);
+          alert("Error inesperado al eliminar el evento");
+        }
+      }
+
+      // ==============================
+      // INIT
+      // ==============================
+      document.addEventListener("DOMContentLoaded", () => {
+        const formNuevo = document.getElementById("form-evento");
+        formNuevo.addEventListener("submit", crearEvento);
+
+        const formDetalle = document.getElementById("form-detalle");
+        formDetalle.addEventListener("submit", guardarCambiosDetalle);
+
+        const btnBorrar = document.getElementById("btn-borrar");
+        btnBorrar.addEventListener("click", borrarEvento);
+
+        cargarEventos();
+      });
