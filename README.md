@@ -97,6 +97,18 @@ Render iniciará el servidor automáticamente.
 
 
 
+![Login - Eventify Pro - Google Chrome](https://github.com/user-attachments/assets/cedbba5e-97c6-4b81-a610-32221faf7f8c)
+
+
+![Editing EpicaSoft-Eventify-TPFinalREADME md at main · norminsEpicaSoft-Eventify-TPFinal - Google Chrome](https://github.com/user-attachments/assets/1b1374ee-fb48-4ce5-9876-727192502fa6)
+
+
+![Eventify Pro - ÉpicaSoft - Google Chrome](https://github.com/user-attachments/assets/badc99b5-3f20-49b1-b6c4-963a13c8fdb4)
+
+
+![Eventify Pro - ÉpicaSoft - Google Chrome_2](https://github.com/user-attachments/assets/2ce00282-b03e-4394-8346-aefb2748a8d4)
+
+
 
 ## Authors
 - Equipo 1 - Comisión B - Proyecto académico "Eventify"
